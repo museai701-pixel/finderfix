@@ -21,6 +21,9 @@ enum AppGroup {
         static let customTemplates = "ff.customTemplates.v1"
     }
 
+    /// Host app bundle identifier (used by the extension to launch the app).
+    static let hostBundleIdentifier = "com.icyigniter.finderfix"
+
     /// Distributed notification posted by the extension when the user picks
     /// "Show/Hide Hidden Files" (the extension cannot toggle it itself).
     static let toggleHiddenFilesNotification = Notification.Name("com.icyigniter.finderfix.toggleHiddenFiles")

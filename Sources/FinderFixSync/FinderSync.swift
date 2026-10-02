@@ -21,11 +21,13 @@
 //      performs the toggle.
 //
 //  Concurrency (Swift 6):
-//    FIFinderSync's ObjC entry points (`init`, `menu(for:)`) are nonisolated.
-//    Finder invokes `menu(for:)` on the extension's main thread, but we hop to
-//    the MainActor explicitly rather than assuming it, and keep `menu(for:)`
-//    fast and synchronous — all file I/O goes through the FinderFixCore helpers
-//    (BookmarkStore / CutState / FileOperations), which are synchronous and local.
+//    The FinderFixSync target sets SWIFT_DEFAULT_ACTOR_ISOLATION=nonisolated,
+//    because FIFinderSync's ObjC entry points (`init`, `menu(for:)`) are
+//    nonisolated and the whole class follows suit. Finder invokes `menu(for:)`
+//    on the extension's main thread; we verify that (with a main-queue
+//    fallback) and keep `menu(for:)` fast and synchronous — all file I/O goes
+//    through the FinderFixCore helpers (BookmarkStore / CutState /
+//    FileOperations), which are synchronous and local.
 
 import AppKit
 import FinderSync
@@ -80,12 +82,12 @@ final class FinderSync: FIFinderSync {
     // MARK: - Menu construction
 
     /// Called by Finder to build the contextual menu. Must be fast and
-    /// synchronous. Menu construction is main-thread-only AppKit, so hop to
-    /// the MainActor explicitly (Finder calls this on the main thread; the
-    /// fallback below keeps us safe even if that ever changes).
+    /// synchronous. Menu construction is main-thread-only AppKit — Finder calls
+    /// this on the main thread; the fallback below keeps us safe even if that
+    /// ever changes.
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
         if Thread.isMainThread {
-            return MainActor.assumeIsolated { buildMenu(for: menuKind) }
+            return buildMenu(for: menuKind)
         }
         // Defensive: never build AppKit menus off the main thread.
         return DispatchQueue.main.sync { buildMenu(for: menuKind) }
@@ -101,6 +103,8 @@ final class FinderSync: FIFinderSync {
             // Sidebar targets have no reliable destination directory — excluded
             // per the MoreMenu recipe.
             return nil
+        case .toolbarItemMenu:
+            return nil
         @unknown default:
             return nil
         }
@@ -108,7 +112,7 @@ final class FinderSync: FIFinderSync {
 
     /// Right-click on one or more selected files/folders.
     private func buildItemsMenu() -> NSMenu? {
-        guard let selection = selectedItemURLs(), !selection.isEmpty else {
+        guard let selection = FIFinderSyncController.default().selectedItemURLs(), !selection.isEmpty else {
             return nil
         }
 
@@ -194,7 +198,7 @@ final class FinderSync: FIFinderSync {
     /// at a file rather than a folder; normalize to the parent directory.
     /// Returns nil when Finder gives us no target at all.
     private func containerDirectory() -> URL? {
-        guard var url = targetedURL() else { return nil }
+        guard var url = FIFinderSyncController.default().targetedURL() else { return nil }
         // Cheap local metadata check. If it fails (e.g. sandbox), the URL is
         // kept as-is and the bookmark gate below makes the final decision —
         // we never proceed without a covering bookmark.
@@ -207,18 +211,18 @@ final class FinderSync: FIFinderSync {
     // MARK: - Item actions
 
     @objc private func cutItems(_ sender: NSMenuItem) {
-        guard let selection = selectedItemURLs(), !selection.isEmpty else { return }
+        guard let selection = FIFinderSyncController.default().selectedItemURLs(), !selection.isEmpty else { return }
         CutState.set(paths: selection.map { $0.path })
         NSLog("[FinderFixSync] cut %d item(s)", selection.count)
     }
 
     @objc private func copyPOSIXPaths(_ sender: NSMenuItem) {
-        guard let selection = selectedItemURLs(), !selection.isEmpty else { return }
+        guard let selection = FIFinderSyncController.default().selectedItemURLs(), !selection.isEmpty else { return }
         FileOperations.copyPOSIXPaths(selection)
     }
 
     @objc private func copyFileNames(_ sender: NSMenuItem) {
-        guard let selection = selectedItemURLs(), !selection.isEmpty else { return }
+        guard let selection = FIFinderSyncController.default().selectedItemURLs(), !selection.isEmpty else { return }
         FileOperations.copyFileNames(selection)
     }
 
@@ -370,8 +374,16 @@ final class FinderSync: FIFinderSync {
     /// does nothing is worse than one that opens the app.
     private func revealHostApp() {
         NSLog("[FinderFixSync] no bookmark covers target; launching host app")
-        if !NSWorkspace.shared.launchApplication("FinderFix") {
-            NSLog("[FinderFixSync] failed to launch host app")
+        guard let appURL = NSWorkspace.shared.urlForApplication(
+            withBundleIdentifier: AppGroup.hostBundleIdentifier
+        ) else {
+            NSLog("[FinderFixSync] host app not found")
+            return
         }
+        NSWorkspace.shared.openApplication(
+            at: appURL,
+            configuration: NSWorkspace.OpenConfiguration(),
+            completionHandler: nil
+        )
     }
 }

@@ -55,6 +55,12 @@ targets:
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: "" # <-- set your Team ID here (or in Xcode)
         SKIP_INSTALL: YES
+        # The extension subclasses FIFinderSync whose ObjC entry points
+        # (init, menu(for:)) are nonisolated. A nonisolated default keeps the
+        # whole class consistent with them under Swift 6. Finder invokes the
+        # extension on the main thread; menu building stays main-thread-only
+        # via an explicit check in menu(for:).
+        SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
 
 schemes:
   FinderFix:
