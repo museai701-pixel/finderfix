@@ -82,15 +82,12 @@ final class FinderSync: FIFinderSync {
     // MARK: - Menu construction
 
     /// Called by Finder to build the contextual menu. Must be fast and
-    /// synchronous. Menu construction is main-thread-only AppKit — Finder calls
-    /// this on the main thread; the fallback below keeps us safe even if that
-    /// ever changes.
+    /// synchronous. Menu construction is main-thread-only AppKit — Finder
+    /// invokes this on the main thread; if that ever changes we fail safe
+    /// (return nil) rather than building menus off the main thread.
     override func menu(for menuKind: FIMenuKind) -> NSMenu? {
-        if Thread.isMainThread {
-            return buildMenu(for: menuKind)
-        }
-        // Defensive: never build AppKit menus off the main thread.
-        return DispatchQueue.main.sync { buildMenu(for: menuKind) }
+        guard Thread.isMainThread else { return nil }
+        return buildMenu(for: menuKind)
     }
 
     private func buildMenu(for menuKind: FIMenuKind) -> NSMenu? {
