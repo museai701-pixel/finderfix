@@ -1,0 +1,95 @@
+name: Release (signed DMG)
+
+# Produces a signed + notarized FinderFix.dmg with ZERO Gatekeeper warnings.
+# Run manually from the Actions tab after adding the secrets below.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   APPLE_TEAM_ID            — your Apple Developer Team ID (10 chars)
+#   DEVELOPER_ID_P12_BASE64  — base64 of your "Developer ID Application" .p12
+#   DEVELOPER_ID_P12_PASSWORD— password for that .p12
+#   APPLE_ID_EMAIL           — your Apple ID email (for notarytool)
+#   APPLE_APP_PASSWORD       — app-specific password (appleid.apple.com → Sign-In and Security)
+#
+# How to export the .p12: Keychain Access → My Certificates → right-click your
+# "Developer ID Application" certificate → Export → .p12 → then:
+#   base64 -i cert.p12 | pbcopy
+# Paste the result into DEVELOPER_ID_P12_BASE64.
+#
+# NOTE: this workflow is a carefully-written template but has never been run
+# (no Apple Developer account in the author's sandbox). If a step fails, send
+# the log to your developer for fixes — most issues are secret formatting.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen and create-dmg
+        run: brew install xcodegen create-dmg
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Fill Team ID into ExportOptions
+        run: sed -i '' "s/__TEAM_ID__/${{ secrets.APPLE_TEAM_ID }}/" ExportOptions.plist
+
+      - name: Import Developer ID certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.DEVELOPER_ID_P12_BASE64 }}
+          p12-password: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+
+      - name: Archive (signed, Release)
+        run: >
+          xcodebuild archive
+          -scheme FinderFix
+          -configuration Release
+          -archivePath build/FinderFix.xcarchive
+          CODE_SIGN_STYLE=Manual
+          DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }}
+          CODE_SIGN_IDENTITY="Developer ID Application"
+
+      - name: Export for Developer ID distribution
+        run: >
+          xcodebuild -exportArchive
+          -archivePath build/FinderFix.xcarchive
+          -exportPath build/export
+          -exportOptionsPlist ExportOptions.plist
+
+      - name: Notarize with Apple
+        run: >
+          xcrun notarytool submit build/export/FinderFix.app
+          --apple-id "${{ secrets.APPLE_ID_EMAIL }}"
+          --password "${{ secrets.APPLE_APP_PASSWORD }}"
+          --team-id "${{ secrets.APPLE_TEAM_ID }}"
+          --wait
+
+      - name: Staple notarization ticket
+        run: xcrun stapler staple build/export/FinderFix.app
+
+      - name: Build DMG
+        run: >
+          create-dmg
+          --volname "FinderFix"
+          --window-pos 200 120
+          --window-size 600 400
+          --icon-size 100
+          --app-drop-link 450 185
+          "FinderFix.dmg"
+          "build/export/"
+
+      - name: Staple the DMG too
+        run: xcrun stapler staple FinderFix.dmg
+
+      - name: Verify Gatekeeper
+        run: spctl -a -vvv -t install FinderFix.dmg
+
+      - name: Upload signed DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: FinderFix-signed-dmg
+          path: FinderFix.dmg

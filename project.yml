@@ -1,0 +1,70 @@
+# FinderFix — generated with XcodeGen (`brew install xcodegen && xcodegen generate`).
+# Requires Xcode 26+ (Swift 6). Set your development team in Xcode after generating.
+name: FinderFix
+
+options:
+  bundleIdPrefix: com.icyigniter
+
+configs:
+  Debug: debug
+  Release: release
+
+settings:
+  base:
+    MARKETING_VERSION: 1.0.0
+    CURRENT_PROJECT_VERSION: 1
+    SWIFT_VERSION: 6.0
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    MACOSX_DEPLOYMENT_TARGET: 14.0
+
+targets:
+  FinderFix:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/FinderFix
+        excludes:
+          - Info.plist
+          - FinderFix.entitlements
+      - path: Sources/FinderFixCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.icyigniter.finderfix
+        INFOPLIST_FILE: Sources/FinderFix/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/FinderFix/FinderFix.entitlements
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: "" # <-- set your Team ID here (or in Xcode)
+    dependencies:
+      - target: FinderFixSync
+        embed: true
+
+  FinderFixSync:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Sources/FinderFixSync
+        excludes:
+          - Info.plist
+          - FinderFixSync.entitlements
+      - path: Sources/FinderFixCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.icyigniter.finderfix.sync
+        INFOPLIST_FILE: Sources/FinderFixSync/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/FinderFixSync/FinderFixSync.entitlements
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: "" # <-- set your Team ID here (or in Xcode)
+        SKIP_INSTALL: YES
+
+schemes:
+  FinderFix:
+    build:
+      targets:
+        FinderFix: all
+        FinderFixSync: all
+    run:
+      config: Debug
+      commandLineArguments:
+        FinderFix: []
+    archive:
+      config: Release

@@ -1,0 +1,41 @@
+name: Build (unsigned compile check)
+
+# Compiles the full project (app + Finder Sync extension) on a real macOS
+# runner on every push. Unsigned — proves the code compiles without needing
+# anyone's Apple Developer identity. The .app artifact can be downloaded for
+# smoke-testing (right-click → Open, or `xattr -cr`, to bypass Gatekeeper once).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build (unsigned, Release)
+        run: >
+          xcodebuild
+          -scheme FinderFix
+          -configuration Release
+          -derivedDataPath build
+          CODE_SIGNING_ALLOWED=NO
+          build
+
+      - name: Upload unsigned .app
+        uses: actions/upload-artifact@v4
+        with:
+          name: FinderFix-unsigned
+          path: build/Build/Products/Release/FinderFix.app
