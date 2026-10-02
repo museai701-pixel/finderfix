@@ -21,7 +21,8 @@ enum HotKeyAction: String, CaseIterable, Identifiable {
     }
 
     /// Carbon EventHotKeyID. Must be unique within our 'FFix' signature.
-    var hotKeyID: Int {
+    /// Nonisolated: pure computation, read from the nonisolated Carbon procs.
+    nonisolated var hotKeyID: Int {
         switch self {
         case .cut: return 1
         case .paste: return 2
@@ -29,7 +30,7 @@ enum HotKeyAction: String, CaseIterable, Identifiable {
         }
     }
 
-    var keyCode: UInt32 {
+    nonisolated var keyCode: UInt32 {
         switch self {
         case .cut: return UInt32(kVK_ANSI_X)
         case .paste: return UInt32(kVK_ANSI_V)
@@ -37,9 +38,9 @@ enum HotKeyAction: String, CaseIterable, Identifiable {
         }
     }
 
-    var defaultsKey: String { "ff.hotkey.modifiers." + rawValue }
+    nonisolated var defaultsKey: String { "ff.hotkey.modifiers." + rawValue }
 
-    var defaultModifiers: UInt32 { UInt32(controlKey) | UInt32(cmdKey) }
+    nonisolated var defaultModifiers: UInt32 { UInt32(controlKey) | UInt32(cmdKey) }
 }
 
 /// Modifier presets offered in Settings. No free-form recorder: presets are
@@ -49,7 +50,7 @@ struct HotKeyPreset: Identifiable, Hashable {
     let modifiers: UInt32
     var id: String { name }
 
-    static let all: [HotKeyPreset] = [
+    nonisolated static let all: [HotKeyPreset] = [
         HotKeyPreset(name: "⌃⌘", modifiers: UInt32(controlKey) | UInt32(cmdKey)),
         HotKeyPreset(name: "⌥⌘", modifiers: UInt32(optionKey) | UInt32(cmdKey)),
         HotKeyPreset(name: "⇧⌃⌘", modifiers: UInt32(shiftKey) | UInt32(controlKey) | UInt32(cmdKey)),
@@ -57,7 +58,7 @@ struct HotKeyPreset: Identifiable, Hashable {
     ]
 }
 
-private func fourCC(_ string: String) -> FourCharCode {
+private nonisolated func fourCC(_ string: String) -> FourCharCode {
     let bytes = Array(string.utf8.prefix(4))
         + Array(repeating: UInt8(0), count: max(0, 4 - string.utf8.count))
     return (UInt32(bytes[0]) << 24) | (UInt32(bytes[1]) << 16)
@@ -65,8 +66,9 @@ private func fourCC(_ string: String) -> FourCharCode {
 }
 
 /// Carbon hot-key event proc. Runs on the main event loop; forwards to the
-/// singleton on the main queue.
-private func hotKeyEventProc(
+/// singleton on the main queue. Nonisolated: Carbon requires a plain C function
+/// pointer, which cannot carry actor isolation.
+private nonisolated func hotKeyEventProc(
     _ nextHandler: EventHandlerCallRef?,
     _ event: EventRef?,
     _ userData: UnsafeMutableRawPointer?
@@ -79,7 +81,7 @@ private func hotKeyEventProc(
             EventParamName(kEventParamDirectObject),
             EventParamType(typeEventHotKeyID),
             nil,
-            UInt32(MemoryLayout<EventHotKeyID>.size),
+            MemoryLayout<EventHotKeyID>.size,
             nil,
             ptr
         )
@@ -124,7 +126,7 @@ final class HotKeyManager: ObservableObject {
     /// (@MainActor keeps @Published mutation checking clean in Swift 6.)
     @Published var presetSelections: [String: Int] = [:]
 
-    private static let signature: FourCharCode = fourCC("FFix")
+    nonisolated private static let signature: FourCharCode = fourCC("FFix")
 
     // Carbon refs are touched from deinit (nonisolated), so they opt out of
     // actor isolation. All mutation still happens on the main thread in practice.
